@@ -1,0 +1,35 @@
+{
+  "name": "flowforge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test -w packages/core",
+    "dev": "npm run dev -w apps/web",
+    "typecheck": "npm run typecheck -w packages/core",
+    "format": "prettier --write ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NishaM2/Validator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/NishaM2/Validator/issues"
+  },
+  "homepage": "https://github.com/NishaM2/Validator#readme",
+  "private": "true",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
