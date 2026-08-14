@@ -6,17 +6,22 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "generate": "drizzle-kit generate",
-    "push": "drizzle-kit push"
+    "push": "drizzle-kit push",
+    "seed": "tsx src/seed.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "drizzle-kit": "^0.31.10"
   },
   "dependencies": {
+    "@flow/core": "^0.0.0",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "zod-to-json-schema": "^3.25.2"
   }
 }
