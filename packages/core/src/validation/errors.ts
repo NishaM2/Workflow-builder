@@ -11,6 +11,7 @@ type ValidationCode =
     | 'TRIGGER_HAS_INCOMING_EDGE'
     | 'INVALID_WORKFLOW'
     | 'INVALID_TYPE_VERSION'
+    | 'UNRESOLVED_PLACEHOLDER'
     | 'UNREACHABLE_NODE';
 
 type ValidationSeverity = 'error' | 'warning'
