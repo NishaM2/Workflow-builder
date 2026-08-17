@@ -1,0 +1,41 @@
+{
+  "id": "broken-obvious",
+  "name": "Broken Obvious Workflow",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "http_1",
+      "type": "http.request",
+      "typeVersion": 1,
+      "params": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "fake_1",
+      "type": "slack.sendMessage",
+      "typeVersion": 1,
+      "params": {},
+      "position": {
+        "x": 300,
+        "y": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "from": "http_1",
+      "fromPort": "main",
+      "to": "fake_1"
+    },
+    {
+      "id": "edge_2",
+      "from": "http_1",
+      "fromPort": "main",
+      "to": "missing_node"
+    }
+  ]
+}

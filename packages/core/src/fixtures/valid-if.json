@@ -1,0 +1,98 @@
+{
+  "id": "workflow_if_1",
+  "name": "IF Node Test",
+  "version": 1,
+  "nodes": [
+    {
+      "id": "manual_1",
+      "type": "manual.trigger",
+      "typeVersion": 1,
+      "params": {},
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "if_1",
+      "type": "logic.if",
+      "typeVersion": 1,
+      "params": {
+        "left": {
+          "kind": "literal",
+          "value": "10"
+        },
+        "operator": {
+          "kind": "literal",
+          "value": "greater_than"
+        },
+        "right": {
+          "kind": "literal",
+          "value": "5"
+        }
+      },
+      "position": {
+        "x": 250,
+        "y": 0
+      }
+    },
+    {
+      "id": "slack_true",
+      "type": "slack.post",
+      "typeVersion": 1,
+      "params": {
+        "channel": {
+          "kind": "literal",
+          "value": "#engineering"
+        },
+        "message": {
+          "kind": "literal",
+          "value": "Condition is true"
+        }
+      },
+      "position": {
+        "x": 500,
+        "y": -100
+      }
+    },
+    {
+      "id": "slack_false",
+      "type": "slack.post",
+      "typeVersion": 1,
+      "params": {
+        "channel": {
+          "kind": "literal",
+          "value": "#engineering"
+        },
+        "message": {
+          "kind": "literal",
+          "value": "Condition is false"
+        }
+      },
+      "position": {
+        "x": 500,
+        "y": 100
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "from": "manual_1",
+      "fromPort": "main",
+      "to": "if_1"
+    },
+    {
+      "id": "edge_2",
+      "from": "if_1",
+      "fromPort": "true",
+      "to": "slack_true"
+    },
+    {
+      "id": "edge_3",
+      "from": "if_1",
+      "fromPort": "false",
+      "to": "slack_false"
+    }
+  ]
+}

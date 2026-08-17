@@ -1,4 +1,4 @@
-type ValidationCode = 
+export type ValidationCode = 
     | 'UNKNOWN_NODE_TYPE'
     | 'MISSING_PARAM'
     | 'INVALID_PARAM'
@@ -14,7 +14,7 @@ type ValidationCode =
     | 'UNRESOLVED_PLACEHOLDER'
     | 'UNREACHABLE_NODE';
 
-type ValidationSeverity = 'error' | 'warning'
+export type ValidationSeverity = 'error' | 'warning'
 
 export type ValidationError = {
     code: ValidationCode

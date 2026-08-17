@@ -1,6 +1,6 @@
 {
-  "id": "broken-subtle",
-  "name": "Broken Subtle Workflow",
+  "id": "cycle-workflow",
+  "name": "Cycle Workflow",
   "version": 1,
   "nodes": [
     {
@@ -42,8 +42,8 @@
           "value": "#engineering"
         },
         "message": {
-          "kind": "template",
-          "template": "{{http_1.staus}}"
+          "kind": "literal",
+          "value": "Hello"
         }
       },
       "position": {
@@ -64,6 +64,12 @@
       "from": "http_1",
       "fromPort": "main",
       "to": "slack_1"
+    },
+    {
+      "id": "edge_3",
+      "from": "slack_1",
+      "fromPort": "main",
+      "to": "http_1"
     }
   ]
 }
