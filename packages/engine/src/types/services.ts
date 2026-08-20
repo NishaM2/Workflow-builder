@@ -2,7 +2,7 @@ export interface Services {
     http: {
         request(options: {
             url: string;
-            method: 'GET' | 'POST' | 'PUT';
+            method: string;
             headers?: Record<string, string>;
             body?: unknown;
             timeout?: number;
@@ -17,6 +17,7 @@ export interface Services {
         prompt(options: {
             model: string;
             prompt: string;
+            maxTokens?: number;
         }): Promise<{
             text: string;
         }>;
@@ -25,10 +26,10 @@ export interface Services {
     slack: {
         post(options: {
             channel: string;
-            text: string;
+            message: string;
         }): Promise<{
             ok: boolean;
-            messageId?: string;
+            ts: string;
         }>;
     };
 
@@ -39,6 +40,7 @@ export interface Services {
 
     clock: {
         now(): string;
+        nowMs(): number;
         sleep(ms: number): Promise<void>;
     };
 }

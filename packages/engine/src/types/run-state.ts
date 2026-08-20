@@ -11,6 +11,9 @@ export type EdgeState =
     | 'dead'
 
 export type RunStatus = 
+    | 'running'
     | 'success'
     | 'error'
     | 'blocked'
+
+export type TerminalRunStatus = Exclude<RunStatus, 'running'>;
