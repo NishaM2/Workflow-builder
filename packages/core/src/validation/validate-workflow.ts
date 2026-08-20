@@ -2,6 +2,7 @@ import { getNodeDefinition } from '../catalog';
 import { WorkflowSchema } from '../schemas';
 import type { NodeDefinition } from '../schemas';
 import type { ValidationError } from './errors';
+import { REFERENCE_PATTERN } from '../utils/reference';
 import { z } from 'zod';
 
 export type ValidationResult = {
@@ -9,8 +10,6 @@ export type ValidationResult = {
   errors: ValidationError[];
   warnings: ValidationError[];
 };
-
-const REFERENCE_PATTERN = /\{\{\s*([\w.]+)\s*\}\}/g;
 
 // Topological sort
 export function topoSort(
