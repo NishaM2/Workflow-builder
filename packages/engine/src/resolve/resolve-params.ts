@@ -40,7 +40,7 @@ export function resolveParams(
                     outputs
                 );
 
-                                if (result.ok) {
+                if (result.ok) {
                     resolved[paramName] = result.value;
                 } else {
                     problems.push({
@@ -57,8 +57,7 @@ export function resolveParams(
                 // validation should block the run first.
                 problems.push({
                     param: paramName,
-                    message:
-                        `Parameter '${paramName}' contains an unresolved placeholder`,
+                    message: `Parameter '${paramName}' contains an unresolved placeholder`,
                 });
 
                 break;

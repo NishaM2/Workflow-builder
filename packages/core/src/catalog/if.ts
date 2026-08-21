@@ -9,9 +9,9 @@ export const logicIf = defineNode({
     category: 'logic',
     outputs: [{ id: 'true', label: 'True'}, { id: 'false', label: 'False'}],
     parameters: z.object({
-        left: z.string().describe('The value to evaluate. Can contain a {{...}} reference to data from a previous node.'),
+        left: z.union([z.string(), z.number(), z.boolean()]).describe('The value to evaluate. Can contain a {{...}} reference to data from a previous node.'),
         operator: z.enum(['equals', 'not_equals', 'greater_than', 'less_than']).describe('The comparison operation to perform between the left and right values.'),
-        right: z.string().describe('The value to compare against. Can be a literal value or a {{...}} reference.')
+        right: z.union([z.string(), z.number(), z.boolean()]).describe('The value to compare against. Can be a literal value or a {{...}} reference.')
     }),
     output: z.object({})
 })
