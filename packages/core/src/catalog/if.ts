@@ -10,7 +10,7 @@ export const logicIf = defineNode({
     outputs: [{ id: 'true', label: 'True'}, { id: 'false', label: 'False'}],
     parameters: z.object({
         left: z.union([z.string(), z.number(), z.boolean()]).describe('The value to evaluate. Can contain a {{...}} reference to data from a previous node.'),
-        operator: z.enum(['equals', 'not_equals', 'greater_than', 'less_than']).describe('The comparison operation to perform between the left and right values.'),
+        operator: z.enum(['equals', 'not_equals', 'greater_than', 'greater_than_or_equal', 'less_than', 'less_than_or_equal']).describe('The comparison operation to perform between the left and right values.'),
         right: z.union([z.string(), z.number(), z.boolean()]).describe('The value to compare against. Can be a literal value or a {{...}} reference.')
     }),
     output: z.object({})
