@@ -46,5 +46,5 @@ export async function dispatch(
             },
         };
     }
-    return { ...result, output: parsed.data };
+    return { ...result, output: parsed.data }
 }
