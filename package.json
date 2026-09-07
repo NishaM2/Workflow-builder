@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+
   "scripts": {
-    "test": "npm run test -w packages/core",
+    "test": "npm run test -w packages/core && npm run test -w packages/engine",
     "dev": "npm run dev -w apps/web",
-    "typecheck": "npm run typecheck -w packages/core",
+    "typecheck": "npm run typecheck -w packages/core && npm run typecheck -w packages/engine",
     "format": "prettier --write ."
   },
+
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NishaM2/Validator.git"
