@@ -89,6 +89,22 @@ export class RunContext {
         }
     }
 
+    // Record a node the run never reached because it halted early. Unlike a skip, this says 
+    // nothing about the branch — so outgoing edges stay pending rather than dead.
+    recordPending(step: StepRecord): void {
+        const pendingStep: StepRecord = {
+            ...step,
+            state: 'pending',
+        };
+
+        this.outputs.delete(pendingStep.nodeId);
+
+        this.steps.set(
+            pendingStep.nodeId,
+            pendingStep
+        );
+    }
+
     getOutput(nodeId: string): unknown {
         return this.outputs.get(nodeId);
     }

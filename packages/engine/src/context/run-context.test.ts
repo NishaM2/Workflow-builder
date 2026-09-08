@@ -87,6 +87,15 @@ describe('RunContext', () => {
         expect(ctx.getEdgeState('e2')).toBe('dead');
     });
 
+    it('leaves outgoing edges pending when a node is never reached', () => {
+        const ctx = new RunContext(workflow);
+        ctx.recordPending(step('if_1', { state: 'pending', firedPorts: [] }));
+
+        expect(ctx.getOutputs().has('if_1')).toBe(false);
+        expect(ctx.getEdgeState('e2')).toBe('pending');
+        expect(ctx.getEdgeState('e3')).toBe('pending');
+    });
+
     it('reports active incoming edges correctly', () => {
         const ctx = new RunContext(workflow);
         expect(ctx.hasIncomingEdges('manual_1')).toBe(false);
