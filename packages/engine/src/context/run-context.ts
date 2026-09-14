@@ -1,4 +1,4 @@
-import type { Workflow } from '@flow/core';
+import type { Workflow, WorkflowEdge } from '@flow/core';
 import type { EdgeState } from '../types/run-state';
 import type { StepRecord } from '../types/step';
 
@@ -44,8 +44,10 @@ export class RunContext {
         this.updateOutgoingEdges(successStep.nodeId, successStep.firedPorts);
     }
 
-    // Record a node execution error. Errors do not produce usable outputs. All outgoing edges become dead.
-    recordError(step: StepRecord): void {
+    // Record a node execution error. Errors do not produce usable outputs. By default every outgoing edge becomes dead,
+    // which is right when the run carries on past the failure. When the error halts the run, the edges are left pending
+    // instead: whatever lies downstream was never reached, not decided against.
+    recordError(step: StepRecord, options: { haltsRun?: boolean } = {}): void {
         const errorStep: StepRecord = {
             ...step,
             state: 'error',
@@ -58,6 +60,8 @@ export class RunContext {
             errorStep.nodeId,
             errorStep
         );
+
+        if (options.haltsRun) return;
 
         const outgoing =
             this.outgoingEdges.get(errorStep.nodeId) ?? [];
@@ -135,6 +139,12 @@ export class RunContext {
         return (
             (this.incomingEdges.get(nodeId) ?? []).length > 0
         );
+    }
+
+    // The edges pointing into a node. The context owns the graph's shape during a run, so callers read this
+    // rather than indexing the edges a second time.
+    getIncomingEdges(nodeId: string): readonly WorkflowEdge[] {
+        return this.incomingEdges.get(nodeId) ?? [];
     }
 
     // Is at least one incoming edge active?

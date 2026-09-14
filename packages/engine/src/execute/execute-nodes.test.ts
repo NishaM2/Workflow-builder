@@ -262,11 +262,94 @@ describe('executeNodes', () => {
         expect(stateOf(context, 'slack_1')).toBe('pending');
         expect(stateOf(context, 'llm_1')).toBe('pending');
 
+        // Only a node that reached dispatch has made an attempt.
+        expect(context.getStep('http_1')?.attempt).toBe(1);
+        expect(context.getStep('slack_1')?.attempt).toBe(0);
+
         // Pending is not skipped: nothing was decided about this edge.
         expect(context.getEdgeState('e3')).toBe('pending');
 
         expect(fake.slackCalls).toHaveLength(0);
         expect(context.getSteps()).toHaveLength(4);
+    });
+
+    it('classifies nodes the same whichever order the walk visits them in', async () => {
+        // Condition false, so the false-branch Slack node runs and its call
+        // fails, halting the run.
+        const halting = (workflow: Workflow): Workflow => {
+            workflow.nodes.find((n) => n.id === 'if_1')!.params.left = lit('1');
+            return workflow;
+        };
+
+        const slackDown = (fake: Fake) => {
+            fake.services.slack.post = async () => {
+                throw new Error('slack down');
+            };
+        };
+
+        const forward = halting(branchingFixture());
+
+        // topoSort breaks ties by edge order, so the edges have to move too.
+        // Reversing only the nodes array leaves the walk order unchanged.
+        const reversed = halting(branchingFixture());
+        reversed.nodes.reverse();
+        reversed.edges.reverse();
+
+        const forwardRun = await run(forward, slackDown);
+        const reversedRun = await run(reversed, slackDown);
+
+        const visitOrder = (context: RunContext) =>
+            context.getSteps().map((step) => step.nodeId);
+
+        const states = (context: RunContext) =>
+            Object.fromEntries(
+                context.getSteps().map((step) => [step.nodeId, step.state]),
+            );
+
+        // Guard against a vacuous pass: the runs must really visit the two
+        // Slack nodes in opposite orders.
+        expect(visitOrder(reversedRun.context)).not.toEqual(
+            visitOrder(forwardRun.context),
+        );
+
+        // slack_true's branch was decided against before the halt, so it is
+        // skipped in both runs, never pending just because it sorted later.
+        expect(states(reversedRun.context)).toEqual(states(forwardRun.context));
+        expect(stateOf(reversedRun.context, 'slack_true')).toBe('skipped');
+        expect(stateOf(reversedRun.context, 'slack_false')).toBe('error');
+        expect(reversedRun.outcome).toEqual(forwardRun.outcome);
+    });
+
+    it('returns a cycle as an outcome instead of throwing', async () => {
+        const workflow = wf(
+            [
+                node('manual_1', 'manual.trigger'),
+                slackNode('slack_a', lit('a')),
+                slackNode('slack_b', lit('b')),
+            ],
+            [
+                edge('e1', 'manual_1', 'main', 'slack_a'),
+                edge('e2', 'slack_a', 'main', 'slack_b'),
+                edge('e3', 'slack_b', 'main', 'slack_a'),
+            ],
+        );
+
+        const { fake, context, outcome } = await run(workflow);
+
+        expect(outcome).toMatchObject({
+            completed: false,
+            haltedAt: null,
+            error: { code: 'CYCLE_DETECTED' },
+        });
+
+        // Nothing was reached, but every node still has a record.
+        expect(context.getSteps()).toHaveLength(workflow.nodes.length);
+
+        for (const step of context.getSteps()) {
+            expect(step.state).toBe('pending');
+        }
+
+        expect(fake.slackCalls).toHaveLength(0);
     });
 
     it('runs a rejoining node once, against the branch that was taken', async () => {

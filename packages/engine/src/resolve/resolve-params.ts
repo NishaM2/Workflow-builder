@@ -9,7 +9,7 @@ export interface ParamProblem {
 export type ResolveParamsResult =
     |   {
             ok: true;
-            params: unknown;
+            params: Record<string, unknown>;
         }
     |   {
             ok: false;

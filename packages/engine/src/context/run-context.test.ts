@@ -96,6 +96,22 @@ describe('RunContext', () => {
         expect(ctx.getEdgeState('e3')).toBe('pending');
     });
 
+    it('leaves outgoing edges pending when an error halts the run', () => {
+        const ctx = new RunContext(workflow);
+        ctx.recordError(
+            step('if_1', {
+                state: 'error',
+                firedPorts: [],
+                error: { message: 'boom' },
+            }),
+            { haltsRun: true },
+        );
+
+        expect(ctx.getOutputs().has('if_1')).toBe(false);
+        expect(ctx.getEdgeState('e2')).toBe('pending');
+        expect(ctx.getEdgeState('e3')).toBe('pending');
+    });
+
     it('reports active incoming edges correctly', () => {
         const ctx = new RunContext(workflow);
         expect(ctx.hasIncomingEdges('manual_1')).toBe(false);
@@ -111,6 +127,16 @@ describe('RunContext', () => {
         const ctx = new RunContext(workflow);
         ctx.recordSuccess(step('manual_1', { output: {} }));
         ctx.recordSkipped(step('slack_true', { state: 'skipped', firedPorts: [] }));
+
+        // A caller-supplied output must never reach the outputs map for a node
+        // that didn't succeed, including the halting error and the pending record.
+        ctx.recordError(
+            step('if_1', { state: 'error', firedPorts: [], output: { stale: true } }),
+            { haltsRun: true },
+        );
+        ctx.recordPending(
+            step('slack_false', { state: 'pending', firedPorts: [], output: { stale: true } }),
+        );
 
         for (const s of ctx.getSteps()) {
             expect(ctx.getOutputs().has(s.nodeId)).toBe(s.state === 'success');

@@ -10,7 +10,16 @@ export async function dispatch(
     const definition = getNodeDefinition(type);
     const executor = getExecutor(type);
 
-    if (!definition || !executor) {
+    // Two different failures under two codes. An unknown type is a problem with the graph, reported under the
+    // validator's own code, and a repair prompt can fix it. A catalog type with no executor is an engine bug it can't.
+    if (!definition) {
+        return {
+            status: 'error',
+            error: { message: `Unknown node type "${type}"`, code: 'UNKNOWN_NODE_TYPE' },
+        };
+    }
+
+    if (!executor) {
         return {
             status: 'error',
             error: { message: `No executor for node type "${type}"`, code: 'NO_EXECUTOR' },
