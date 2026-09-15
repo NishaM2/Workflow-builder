@@ -325,6 +325,27 @@ describe('validateWorkflow', () => {
             result.errors.map((error) => error.code),
         ).toContain('INVALID_PARAM');
     })
+
+    it('accepts a per-node onError and rejects an unknown one', () => {
+        const trigger = (onError: unknown) =>
+            minimal([
+                {
+                    id: 'manual_1',
+                    type: 'manual.trigger',
+                    typeVersion: 1,
+                    params: {},
+                    position: { x: 0, y: 0 },
+                    onError,
+                },
+            ])
+
+        expect(validateWorkflow(trigger('continue')).valid).toBe(true)
+
+        const result = validateWorkflow(trigger('retry'))
+        expect(result.valid).toBe(false)
+        expect(result.errors[0]?.code).toBe('INVALID_WORKFLOW')
+        expect(result.errors[0]?.path).toBe('nodes.0.onError')
+    })
 })
 
 

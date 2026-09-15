@@ -7,6 +7,9 @@ export const NodeSchema = z.object({
     typeVersion: z.number().int().positive(),
     params: z.record(z.string(), ParameterValueSchema),
     label: z.string().optional(),
+    // What the run does when this node fails once its retries are spent: halt the
+    // walk, or carry on with independent branches. Unset inherits the run's policy.
+    onError: z.enum(['stop', 'continue']).optional(),
     position: z.object({
         x: z.number(),
         y: z.number()
