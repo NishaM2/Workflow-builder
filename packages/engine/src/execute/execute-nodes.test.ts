@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ParameterValue, Workflow, WorkflowEdge } from '@flow/core';
 import { RunContext } from '../context/run-context';
 import { createFakeServices } from '../services/fake';
+import type { ExecutionPolicy } from '../types';
 import { executeNodes } from './execute-nodes';
 import ifFixture from '../../../core/src/fixtures/valid-if.json';
 
@@ -43,9 +44,18 @@ const wf = (
 const branchingFixture = (): Workflow =>
     JSON.parse(JSON.stringify(ifFixture)) as Workflow;
 
+// Realistic defaults, so every loop test also runs through the retry wrapper and
+// arms, then cancels, a timer for each node it executes.
+const POLICY: ExecutionPolicy = {
+    onError: 'stop',
+    retryCount: 3,
+    timeoutMs: 30_000,
+};
+
 const run = async (
     workflow: Workflow,
     configure?: (fake: Fake) => void,
+    policy: Partial<ExecutionPolicy> = {},
 ) => {
     const fake = createFakeServices();
     configure?.(fake);
@@ -58,6 +68,7 @@ const run = async (
         services: fake.services,
         runId: 'run_1',
         triggerPayload: {},
+        policy: { ...POLICY, ...policy },
     });
 
     return { fake, context, outcome };
@@ -68,6 +79,12 @@ const stateOf = (context: RunContext, nodeId: string) =>
 
 const slackNode = (id: string, message: ParameterValue) =>
     node(id, 'slack.post', { channel: lit('#eng'), message });
+
+const httpNode = (id: string) =>
+    node(id, 'http.request', {
+        url: lit('https://example.com'),
+        method: lit('GET'),
+    });
 
 describe('executeNodes', () => {
     it('takes the false branch and calls slack exactly once', async () => {
@@ -387,5 +404,153 @@ describe('executeNodes', () => {
 
         expect(context.getEdgeState('e4')).toBe('dead');
         expect(context.getEdgeState('e5')).toBe('active');
+    });
+
+    it('retries a failing HTTP call and records how many attempts it took', async () => {
+        const workflow = wf(
+            [node('manual_1', 'manual.trigger'), httpNode('http_1')],
+            [edge('e1', 'manual_1', 'main', 'http_1')],
+        );
+
+        const { fake, context, outcome } = await run(workflow, (f) => {
+            f.queueHttp({ status: 503, headers: {}, body: {} });
+            f.queueHttp({ status: 503, headers: {}, body: {} });
+            f.queueHttp({ status: 200, headers: {}, body: { ok: true } });
+        });
+
+        expect(outcome).toEqual({ completed: true });
+        expect(fake.httpCalls).toHaveLength(3);
+        expect(fake.delays).toEqual([1000, 2000]);
+
+        const step = context.getStep('http_1');
+        expect(step?.state).toBe('success');
+        expect(step?.attempt).toBe(3);
+        expect(step?.output).toMatchObject({ status: 200 });
+
+        // The backoff is part of how long the node took, on the virtual clock.
+        expect(step?.durationMs).toBe(3000);
+    });
+
+    it('times out a hung call on every attempt, then fails the node', async () => {
+        const workflow = wf(
+            [node('manual_1', 'manual.trigger'), httpNode('http_1')],
+            [edge('e1', 'manual_1', 'main', 'http_1')],
+        );
+
+        const { fake, context, outcome } = await run(
+            workflow,
+            (f) => {
+                for (let i = 0; i < 4; i += 1) f.queueHttpHang();
+            },
+            { timeoutMs: 5000 },
+        );
+
+        expect(outcome).toMatchObject({
+            completed: false,
+            haltedAt: 'http_1',
+            error: { code: 'NodeTimeoutError' },
+        });
+
+        const step = context.getStep('http_1');
+        expect(step?.attempt).toBe(4);
+        expect(fake.delays).toEqual([1000, 2000, 4000]);
+
+        // Four 5s timeouts plus 7s of backoff, and not one real millisecond.
+        expect(step?.durationMs).toBe(27_000);
+        expect(fake.pendingTimers()).toBe(0);
+    });
+
+    it('continues past a failure, skipping only what depended on it', async () => {
+        const workflow = wf(
+            [
+                node('manual_1', 'manual.trigger'),
+                httpNode('http_1'),
+                slackNode('after_http', lit('depends on http')),
+                slackNode('independent', lit('runs regardless')),
+            ],
+            [
+                edge('e1', 'manual_1', 'main', 'http_1'),
+                edge('e2', 'http_1', 'main', 'after_http'),
+                edge('e3', 'manual_1', 'main', 'independent'),
+            ],
+        );
+
+        const { fake, context, outcome } = await run(
+            workflow,
+            (f) => f.queueHttpError(new Error('network down')),
+            { onError: 'continue' },
+        );
+
+        // 'continue' means only that the walk doesn't halt.
+        expect(outcome).toEqual({ completed: true });
+        expect(stateOf(context, 'http_1')).toBe('error');
+
+        // The failed node's edges still die, so what depended on it is skipped
+        // rather than run against an output that doesn't exist...
+        expect(context.getEdgeState('e2')).toBe('dead');
+        expect(stateOf(context, 'after_http')).toBe('skipped');
+
+        // ...while the independent branch runs.
+        expect(stateOf(context, 'independent')).toBe('success');
+        expect(fake.slackCalls).toEqual([
+            { channel: '#eng', message: 'runs regardless' },
+        ]);
+    });
+
+    it("lets a node's onError override the run's", async () => {
+        const workflow = wf(
+            [
+                node('manual_1', 'manual.trigger'),
+                { ...httpNode('http_1'), onError: 'stop' as const },
+                slackNode('independent', lit('never reached')),
+            ],
+            [
+                edge('e1', 'manual_1', 'main', 'http_1'),
+                edge('e2', 'manual_1', 'main', 'independent'),
+            ],
+        );
+
+        const { fake, context, outcome } = await run(
+            workflow,
+            (f) => f.queueHttpError(new Error('network down')),
+            { onError: 'continue' },
+        );
+
+        // The run says continue; http_1 says stop, and http_1 wins.
+        expect(outcome).toMatchObject({ completed: false, haltedAt: 'http_1' });
+        expect(stateOf(context, 'independent')).toBe('pending');
+        expect(fake.slackCalls).toHaveLength(0);
+    });
+
+    it('fails a node whose template references a node that errored', async () => {
+        // Only reachable now. Under 'continue' a node can still run after a node it
+        // references has failed: final runs off slack_1's edge, but reads http_1.
+        const workflow = wf(
+            [
+                node('manual_1', 'manual.trigger'),
+                { ...httpNode('http_1'), onError: 'continue' as const },
+                slackNode('slack_1', lit('independent')),
+                slackNode('final', tpl('{{http_1.status}}')),
+            ],
+            [
+                edge('e1', 'manual_1', 'main', 'http_1'),
+                edge('e2', 'manual_1', 'main', 'slack_1'),
+                edge('e3', 'http_1', 'main', 'final'),
+                edge('e4', 'slack_1', 'main', 'final'),
+            ],
+        );
+
+        const { context, outcome } = await run(workflow, (f) =>
+            f.queueHttpError(new Error('network down')),
+        );
+
+        const step = context.getStep('final');
+        expect(step?.state).toBe('error');
+        expect(step?.error?.code).toBe('PARAM_RESOLUTION_FAILED');
+        expect(step?.resolvedParams).toBeUndefined();
+        expect(step?.attempt).toBe(0);
+
+        // final inherits the run's 'stop', so its own failure halts the walk.
+        expect(outcome).toMatchObject({ completed: false, haltedAt: 'final' });
     });
 });

@@ -42,5 +42,8 @@ export interface Services {
         now(): string;
         nowMs(): number;
         sleep(ms: number): Promise<void>;
+        // A cancellable wait for racing against work, where sleep is a wait you commit to.
+        // Cancel it once the race is decided so it doesn't outlive the race.
+        timer(ms: number): { elapsed: Promise<void>; cancel(): void };
     };
 }

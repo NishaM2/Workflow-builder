@@ -1,9 +1,10 @@
 import { getNodeDefinition, topoSort } from '@flow/core';
-import type { NodeResult, Workflow } from '@flow/core';
+import type { Workflow } from '@flow/core';
 import { RunContext } from '../context/run-context';
 import { dispatch } from '../executors/dispatch';
 import { resolveParams } from '../resolve/resolve-params';
-import type { NodeState, Services, StepRecord } from '../types';
+import type { ExecutionPolicy, NodeState, Services, StepRecord } from '../types';
+import { withRetries } from './with-retries';
 
 
 export interface ExecuteNodesArgs {
@@ -12,8 +13,11 @@ export interface ExecuteNodesArgs {
     services: Services;
     runId: string;
     triggerPayload: unknown;
+    policy: ExecutionPolicy;
 }
 
+// completed: true means the walk reached the end. Under onError 'continue' that
+// includes runs where some nodes failed; their steps say so.
 export type ExecuteNodesOutcome =
     | { completed: true }
     | {
@@ -40,7 +44,7 @@ interface StepInput {
 
 // One place to build a step record, so a change to its shape happens here rather
 // than in every branch. Attempts default to 0: only a node that reaches dispatch
-// has made one, and Step 5 counts retries from there.
+// has made one.
 function makeStep(input: StepInput): StepRecord {
     return {
         nodeId: input.nodeId,
@@ -107,6 +111,7 @@ export async function executeNodes({
     services,
     runId,
     triggerPayload,
+    policy,
 }: ExecuteNodesArgs): Promise<ExecuteNodesOutcome> {
     const order = walkOrder(workflow);
 
@@ -167,6 +172,16 @@ export async function executeNodes({
         const started = sampleClock(services.clock);
         const definition = getNodeDefinition(node.type);
 
+        // A node's own onError overrides the run's.
+        //
+        // 'stop' halts the walk and leaves the failed node's edges pending, since
+        // nothing downstream was ever reached. 'continue' means only "don't halt":
+        // the edges still die, so everything downstream of the failure is skipped.
+        // Activating them instead would run nodes whose templates point at an output
+        // that doesn't exist. What 'continue' buys is that independent branches keep
+        // running.
+        const haltsRun = (node.onError ?? policy.onError) === 'stop';
+
         // dispatch reports this same condition under the same code. The lookup is
         // repeated here only because resolveParams needs the definition first.
         if (!definition) {
@@ -175,8 +190,6 @@ export async function executeNodes({
                 code: 'UNKNOWN_NODE_TYPE',
             };
 
-            // Every error halts the run in Step 4, so its outgoing edges stay
-            // pending: what lies downstream was never reached, not decided against.
             context.recordError(
                 makeStep({
                     nodeId,
@@ -186,10 +199,10 @@ export async function executeNodes({
                     durationMs: 0,
                     error,
                 }),
-                { haltsRun: true },
+                { haltsRun },
             );
 
-            halted = { completed: false, haltedAt: nodeId, error };
+            if (haltsRun) halted = { completed: false, haltedAt: nodeId, error };
             continue;
         }
 
@@ -221,40 +234,29 @@ export async function executeNodes({
                     durationMs: finished.ms - started.ms,
                     error,
                 }),
-                { haltsRun: true },
+                { haltsRun },
             );
 
-            halted = { completed: false, haltedAt: nodeId, error };
+            if (haltsRun) halted = { completed: false, haltedAt: nodeId, error };
             continue;
         }
 
-        let result: NodeResult;
-
-        try {
-            result = await dispatch(node.type, {
-                params: resolved.params,
-                runId,
-                nodeId,
-                triggerPayload,
-                services,
-            });
-        } catch (thrown) {
-            // Services throw on timeouts and blocked addresses. Turning that into
-            // a node error keeps the trace complete; one network blip should not
-            // destroy the record of everything that already ran.
-            //
-            // The code is the error's class name on purpose, not by accident: it
-            // preserves RequestTimeoutError and BlockedAddressError, which is what
-            // Step 5's retry classifier keys on. Anything generic reads 'Error'.
-            result = {
-                status: 'error',
-                error: {
-                    message:
-                        thrown instanceof Error ? thrown.message : String(thrown),
-                    code: thrown instanceof Error ? thrown.name : 'UNKNOWN_ERROR',
-                },
-            };
-        }
+        // Retries, backoff and the policy timeout all live in withRetries, which
+        // always resolves: nothing a service throws escapes into the walk.
+        const { result, attempts } = await withRetries({
+            nodeType: node.type,
+            invoke: () =>
+                dispatch(node.type, {
+                    params: resolved.params,
+                    runId,
+                    nodeId,
+                    triggerPayload,
+                    services,
+                }),
+            clock: services.clock,
+            retryCount: policy.retryCount,
+            timeoutMs: policy.timeoutMs,
+        });
 
         const finished = sampleClock(services.clock);
 
@@ -266,14 +268,16 @@ export async function executeNodes({
                     startedAt: started.iso,
                     finishedAt: finished.iso,
                     durationMs: finished.ms - started.ms,
-                    attempt: 1,
+                    attempt: attempts,
                     resolvedParams: resolved.params,
                     error: result.error,
                 }),
-                { haltsRun: true },
+                { haltsRun },
             );
 
-            halted = { completed: false, haltedAt: nodeId, error: result.error };
+            if (haltsRun) {
+                halted = { completed: false, haltedAt: nodeId, error: result.error };
+            }
             continue;
         }
 
@@ -284,7 +288,7 @@ export async function executeNodes({
                 startedAt: started.iso,
                 finishedAt: finished.iso,
                 durationMs: finished.ms - started.ms,
-                attempt: 1,
+                attempt: attempts,
                 resolvedParams: resolved.params,
                 output: result.output,
                 firedPorts: result.firedPorts,
