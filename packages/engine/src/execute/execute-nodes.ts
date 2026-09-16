@@ -65,7 +65,7 @@ function makeStep(input: StepInput): StepRecord {
 
 // Read the clock once and derive the ISO string from that same instant, so a
 // step's timestamps and its duration can never describe different moments.
-function sampleClock(clock: Services['clock']): { ms: number; iso: string } {
+export function sampleClock(clock: Services['clock']): { ms: number; iso: string } {
     const ms = clock.nowMs();
 
     return { ms, iso: new Date(ms).toISOString() };
