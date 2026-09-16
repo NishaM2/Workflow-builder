@@ -2,18 +2,22 @@ import type { Workflow } from "@flow/core";
 import type { RunStatus } from "./run-state";
 import type { StepRecord } from "./step";
 
+export interface StartRunInput {
+    runId: string;
+    workflowId: string;
+    workflowSnapshot: Workflow;
+    triggerPayload: unknown;
+    startedAt: string;
+}
+
+export interface FinishRunInput {
+    runId: string;
+    status: RunStatus;
+    finishedAt: string;
+}
+
 export interface RunStore {
-    startRun(input: {
-        runId: string;
-        workflowId: string;
-        workflowSnapshot: Workflow;
-        triggerPayload: unknown;
-        startedAt: string;
-    }): Promise<void>;
+    startRun(input: StartRunInput): Promise<void>;
     recordStep(runId: string, step: StepRecord): Promise<void>;
-    finishRun(input: {
-        runId: string;
-        status: RunStatus;
-        finishedAt: string;
-    }): Promise<void>;
+    finishRun(input: FinishRunInput): Promise<void>;
 }

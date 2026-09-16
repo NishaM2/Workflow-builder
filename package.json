@@ -7,7 +7,7 @@
   "scripts": {
     "test": "npm run test -w packages/core && npm run test -w packages/engine",
     "dev": "npm run dev -w apps/web",
-    "typecheck": "npm run typecheck -w packages/core && npm run typecheck -w packages/engine",
+    "typecheck": "npm run typecheck -w packages/core && npm run typecheck -w packages/engine && npm run typecheck -w packages/db",
     "format": "prettier --write ."
   },
 

@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "generate": "drizzle-kit generate",
     "push": "drizzle-kit push",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@flow/core": "^0.0.0",
+    "@flow/engine": "^0.0.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",

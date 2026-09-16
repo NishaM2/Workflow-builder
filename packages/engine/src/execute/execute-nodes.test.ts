@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ParameterValue, Workflow, WorkflowEdge } from '@flow/core';
 import { RunContext } from '../context/run-context';
 import { createFakeServices } from '../services/fake';
+import { InMemoryRunStore } from '../store/in-memory-run-store';
 import type { ExecutionPolicy } from '../types';
 import { executeNodes } from './execute-nodes';
 import ifFixture from '../../../core/src/fixtures/valid-if.json';
@@ -552,5 +553,67 @@ describe('executeNodes', () => {
 
         // final inherits the run's 'stop', so its own failure halts the walk.
         expect(outcome).toMatchObject({ completed: false, haltedAt: 'final' });
+    });
+
+    it('hands each step to onStep as it is recorded, in walk order', async () => {
+        const workflow = branchingFixture();
+        const fake = createFakeServices();
+        const context = new RunContext(workflow);
+        const store = new InMemoryRunStore();
+
+        await store.startRun({
+            runId: 'run_1',
+            workflowId: workflow.id,
+            workflowSnapshot: workflow,
+            triggerPayload: {},
+            startedAt: fake.services.clock.now(),
+        });
+
+        const announced: string[] = [];
+
+        await executeNodes({
+            workflow,
+            context,
+            services: fake.services,
+            runId: 'run_1',
+            triggerPayload: {},
+            policy: POLICY,
+            onStep: async (step) => {
+                announced.push(step.nodeId);
+                await store.recordStep('run_1', step);
+            },
+        });
+
+        expect(announced).toEqual(context.getSteps().map((step) => step.nodeId));
+
+        // The in-memory store holds real values, exactly as the context recorded them.
+        expect(store.getRun('run_1')?.steps).toEqual(context.getSteps());
+    });
+
+    it('keeps running when a step listener fails', async () => {
+        const workflow = branchingFixture();
+        const fake = createFakeServices();
+        const context = new RunContext(workflow);
+        const logged: string[] = [];
+
+        fake.services.logger.error = (message) => {
+            logged.push(message);
+        };
+
+        const outcome = await executeNodes({
+            workflow,
+            context,
+            services: fake.services,
+            runId: 'run_1',
+            triggerPayload: {},
+            policy: POLICY,
+            onStep: () => {
+                throw new Error('listener down');
+            },
+        });
+
+        expect(outcome).toEqual({ completed: true });
+        expect(context.getSteps()).toHaveLength(workflow.nodes.length);
+        expect(logged).toHaveLength(workflow.nodes.length);
     });
 });

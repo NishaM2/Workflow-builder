@@ -3,6 +3,7 @@ import type { Workflow } from '@flow/core';
 import { RunContext } from '../context/run-context';
 import { dispatch } from '../executors/dispatch';
 import { resolveParams } from '../resolve/resolve-params';
+import { reportFailure } from '../services/logger';
 import type { ExecutionPolicy, NodeState, Services, StepRecord } from '../types';
 import { withRetries } from './with-retries';
 
@@ -14,6 +15,8 @@ export interface ExecuteNodesArgs {
     runId: string;
     triggerPayload: unknown;
     policy: ExecutionPolicy;
+    // Given each step as soon as it is recorded; the walk waits for it before moving on.
+    onStep?: (step: StepRecord) => void | Promise<void>;
 }
 
 // completed: true means the walk reached the end. Under onError 'continue' that
@@ -112,13 +115,33 @@ export async function executeNodes({
     runId,
     triggerPayload,
     policy,
+    onStep,
 }: ExecuteNodesArgs): Promise<ExecuteNodesOutcome> {
+    // Each recorded step goes to onStep straight away, and the walk waits for it. A
+    // slow listener, a database say, slows execution: for v1 that keeps steps in order
+    // and the code simple. Phase 4's SSE stream will want this same call, and that is
+    // the moment to consider buffering. A listener that fails is logged, never fatal.
+    const announce = async (nodeId: string) => {
+        const step = context.getStep(nodeId);
+        if (!onStep || !step) return;
+
+        try {
+            await onStep(step);
+        } catch (error) {
+            reportFailure(services.logger, 'A step listener failed; the run continues', error, {
+                runId,
+                nodeId,
+            });
+        }
+    };
+
     const order = walkOrder(workflow);
 
     if (!order) {
         // Nothing was reached, but every node still gets a record: no holes.
         for (const node of workflow.nodes) {
             context.recordPending(notStartedStep(services.clock, node.id, 'pending'));
+            await announce(node.id);
         }
 
         return {
@@ -153,6 +176,7 @@ export async function executeNodes({
         // was ever decided about this branch. Only possible once the run halts.
         if (pendingInput) {
             context.recordPending(notStartedStep(services.clock, nodeId, 'pending'));
+            await announce(nodeId);
             continue;
         }
 
@@ -160,12 +184,14 @@ export async function executeNodes({
         // whether or not the run has halted.
         if (!shouldRun(context, nodeId)) {
             context.recordSkipped(notStartedStep(services.clock, nodeId, 'skipped'));
+            await announce(nodeId);
             continue;
         }
 
         // Would have run, but the run has stopped.
         if (halted) {
             context.recordPending(notStartedStep(services.clock, nodeId, 'pending'));
+            await announce(nodeId);
             continue;
         }
 
@@ -201,6 +227,7 @@ export async function executeNodes({
                 }),
                 { haltsRun },
             );
+            await announce(nodeId);
 
             if (haltsRun) halted = { completed: false, haltedAt: nodeId, error };
             continue;
@@ -236,6 +263,7 @@ export async function executeNodes({
                 }),
                 { haltsRun },
             );
+            await announce(nodeId);
 
             if (haltsRun) halted = { completed: false, haltedAt: nodeId, error };
             continue;
@@ -274,6 +302,7 @@ export async function executeNodes({
                 }),
                 { haltsRun },
             );
+            await announce(nodeId);
 
             if (haltsRun) {
                 halted = { completed: false, haltedAt: nodeId, error: result.error };
@@ -294,6 +323,7 @@ export async function executeNodes({
                 firedPorts: result.firedPorts,
             }),
         );
+        await announce(nodeId);
     }
 
     return halted ?? { completed: true };
